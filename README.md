@@ -72,8 +72,19 @@ except for these:
 
 ## Reproducing it
 
-You need a DGX Spark with Docker and the NVIDIA container runtime, about 130 GB of free disk (99 GB of checkpoint plus
-a ~31 GB table map), and nothing else loaded on the GPU.
+You need a DGX Spark with Docker and the NVIDIA container runtime, about 155 GB of free disk (99 GB of checkpoint,
+a ~31 GB table map and the 22 GB image), and nothing else loaded on the GPU.
+
+**You do not patch or build vLLM.** All of myllmbox's changes are pre-built into their v5.2 image, which the recipe pins
+by digest and the runner pulls as-is (`mods: []`). The only host setting the submission box had beyond stock DGX OS:
+
+```bash
+sudo sysctl -w vm.compaction_proactiveness=0     # persist it in /etc/sysctl.d/ if you keep it
+```
+
+myllmbox recommends it (their `tune-host.sh`): on a Spark, the GPU's memory is ordinary system pages, and the kernel's
+background compactor unmaps them from the GPU to move them. They measured 4-5 s stalls about every 37 s. We could not
+measure a difference above run-to-run noise, so treat it as cheap insurance, not a speedup.
 
 **1. Install the CLI** (it clones spark-vllm-docker into `~/.spark-arena/` during `setup`):
 
