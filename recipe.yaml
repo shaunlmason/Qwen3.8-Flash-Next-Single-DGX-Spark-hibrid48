@@ -1,0 +1,83 @@
+# Recipe: Qwen3.8-Flash-Next hibrid48 on myllmbox v5.2 (solo)
+#
+# The config behind https://spark-arena.com/benchmark/14ac40a1-3274-4286-be44-f0e4c452ef20,
+# as a spark-vllm-docker recipe. It is myllmbox's recipe.yaml v5.2 (MIT,
+# https://github.com/myllmbox/qwen38-flash-next-recipe) rendered into vllm flags,
+# with these changes:
+#   - --kv-cache-memory 20 GB, not 27: same speed measured, ~9 GiB more host memory;
+#   - reasoning_effort defaults to medium (the stock template's xhigh loops
+#     under greedy decoding);
+#   - --enable-prompt-tokens-details, so clients see prefix-cache hits;
+#   - PYTORCH_CUDA_ALLOC_CONF cleared. The runner sets expandable_segments:True,
+#     which took MemAvailable to zero during weight load. Do not remove it.
+# Forced by the runner: served name is the HF id, port 8000, caches under
+# /root/.cache/vllm/mbx (the runner mounts ~/.cache/vllm).
+# The checkpoint must be in ~/.cache/huggingface with refs/main at revision
+# e316057d; see README.md.
+
+recipe_version: "1"
+name: Qwen3.8-Flash-Next hibrid48 (myllmbox v5.2, Solo)
+description: myllmbox's vLLM 0.30 build (RecoverSSM, dynamic MTP depth 3-7, Marlin NVFP4 MoE, demand-paged NVFP4 n-gram table) serving the hibrid48 export on one DGX Spark
+
+model: myllmbox/Qwen3.8-Flash-Next-hibrid48
+container: myllmbox/qwen38-flash-next-vllm@sha256:76eda2f6c0e51fd2a9913d97b6f36abd829965ca8cad661195fd70ec763ee7a3
+
+solo_only: true
+
+mods: []
+
+defaults:
+  port: 8000
+  host: 127.0.0.1
+  max_model_len: 262144
+  max_num_seqs: 16
+  max_num_batched_tokens: 8192
+
+env:
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  MBX_PLE_MMAP: "1"
+  MBX_PLE_MMAP_MODE: "nvme"
+  MBX_PLE_MMAP_PREWARM: "0"
+  MBX_PLE_NVME_DIR: "/root/.cache/vllm/mbx/ple-nvme"
+  MBX_PLE_MMAP_TRIGGER: "/root/.cache/vllm/mbx/mbx-ple-prewarm"
+  MBX_DEPTH_CFG: "/root/.cache/vllm/mbx/mbx-depth.json"
+  VLLM_CACHE_ROOT: "/root/.cache/vllm/mbx/vllm-cache"
+  FLASHINFER_WORKSPACE_BASE: "/root/.cache/vllm/mbx/flashinfer-workspace"
+  VLLM_USE_BREAKABLE_CUDAGRAPH: "1"
+  VLLM_MARLIN_USE_ATOMIC_ADD: "1"
+  TORCH_CUDA_ARCH_LIST: "12.1a"
+  FLASHINFER_CUDA_ARCH_LIST: "12.1a"
+  MALLOC_MMAP_THRESHOLD_: "65536"
+  MALLOC_TRIM_THRESHOLD_: "131072"
+  PYTHONUNBUFFERED: "1"
+  # The runner exports expandable_segments:True; production runs without it.
+  PYTORCH_CUDA_ALLOC_CONF: ""
+
+command: |
+  mkdir -p /root/.cache/vllm/mbx && \
+  echo '{{"mode": "dynamic", "min": 3, "window": 48, "promote": [60,45], "demote": [25,15], "log": false}}' > /root/.cache/vllm/mbx/mbx-depth.json && \
+  vllm serve myllmbox/Qwen3.8-Flash-Next-hibrid48 \
+    --host {host} \
+    --port {port} \
+    --served-model-name myllmbox/Qwen3.8-Flash-Next-hibrid48 \
+    --default-chat-template-kwargs '{{"reasoning_effort": "medium"}}' \
+    --enable-prompt-tokens-details \
+    --engram-config '{{"cpu_offload": false}}' \
+    --gdn-prefill-backend triton \
+    --moe-backend marlin \
+    --gpu-memory-utilization 0.70 \
+    --kv-cache-memory 20000000000 \
+    --load-format fastsafetensors \
+    --max-model-len {max_model_len} \
+    --block-size 1632 \
+    --compilation-config '{{"cudagraph_mode":"PIECEWISE","cudagraph_capture_sizes":[1,2,3,4,5,6,7,8,10,12,14,15,16,18,20,21,24,25,28,30,32,35,36,40,42,44,45,48,49,50,52,54,55,56,60,63,64,65,66,70,72,75,77,78,80,84,88,90,91,96,98,104,105,112,120,128],"compile_ranges_endpoints":[32]}}' \
+    --max-num-seqs {max_num_seqs} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --enable-prefix-caching \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_xml \
+    --reasoning-parser qwen3 \
+    --speculative-config '{{"method":"mtp","num_speculative_tokens":7,"rejection_sample_method":"block","draft_sample_method":"probabilistic"}}' \
+    --async-scheduling \
+    --use-replayssm
