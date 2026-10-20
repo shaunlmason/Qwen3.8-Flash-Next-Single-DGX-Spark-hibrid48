@@ -56,19 +56,30 @@ Single-stream tg128 varies ±6.7 tok/s between runs (MTP acceptance depends on c
 
 ## What was changed from upstream
 
-The engine settings are myllmbox's [v5.2 `recipe.yaml`](https://github.com/myllmbox/qwen38-flash-next-recipe), unchanged
-except for these:
+The engine settings are myllmbox's [v5.2 `recipe.yaml`](https://github.com/myllmbox/qwen38-flash-next-recipe) (commit
+`43b45e1`), unchanged except for these:
 
-1. **`--kv-cache-memory 20000000000` (upstream: 27 GB).** At 27 GB the box has about 1 GiB of host memory left
+1. **The checkpoint: hibrid48, not v5.2's default.** v5.2 defaults to azampatti's INT4-AutoRound export, which routes
+   5 of the model's 512 experts per token where the model was trained on 10. hibrid48 is the alternative listed in the same
+   `recipe.yaml`: myllmbox's own export, which keeps all 10. myllmbox's notes put it about 20% slower. On a 75-exercise
+   Aider polyglot subset it scored 62, against 59 for INT4-AutoRound. At that sample size the difference is
+   suggestive, not significant.
+2. **`--kv-cache-memory 20000000000` (upstream: 27 GB).** At 27 GB the box has about 1 GiB of host memory left
    (GB10 memory is shared between CPU and GPU). 20 GB measured the same decode speed at 1-8 streams and leaves 9-10 GiB.
    The cost is the c10 behaviour past 65k described above.
-2. **`reasoning_effort: medium` as the server default.** hibrid48 ships Qwen3.8's stock chat template, which defaults
+3. **`reasoning_effort: medium` as the server default.** hibrid48 ships Qwen3.8's stock chat template, which defaults
    to `xhigh`. With greedy decoding, `xhigh` loops inside the think block until it hits `max_tokens`. Clients that send
    their own effort still get it.
-3. **`--enable-prompt-tokens-details`**, so `usage` reports cached prompt tokens. This is cosmetic for the benchmark.
+4. **`--enable-prompt-tokens-details`**, so `usage` reports cached prompt tokens. This is cosmetic for the benchmark.
+5. **`--distributed-executor-backend mp` was left out**, by oversight while converting the recipe. It is the only
+   upstream flag missing from the submission. At TP 1 vLLM picks its own executor; the effect is unmeasured.
 
 `spark-arena-cli` forces a few more: the served name is the HF id, the port is 8000, and caches live under
-`/root/.cache/vllm/mbx` (the runner mounts `~/.cache/vllm`).
+`/root/.cache/vllm/mbx` (the runner mounts `~/.cache/vllm`). The runner also starts the container `--privileged`,
+which covers the `seccomp=unconfined` that myllmbox's `run.sh` passes, and the recipe clears the runner's
+`PYTORCH_CUDA_ALLOC_CONF` (see [Traps](#traps-that-cost-a-failed-run)). Everything else matches upstream: the
+image (by digest rather than the `v5.2` tag), every other vLLM flag, the environment, the draft-depth settings
+(dynamic, minimum 3, window 48), and the CPU pinning.
 
 ## Reproducing it
 

@@ -4,6 +4,8 @@
 # as a spark-vllm-docker recipe. It is myllmbox's recipe.yaml v5.2 (MIT,
 # https://github.com/myllmbox/qwen38-flash-next-recipe) rendered into vllm flags,
 # with these changes:
+#   - hibrid48 instead of v5.2's default INT4-AutoRound checkpoint (10 experts, not 5);
+#   - --distributed-executor-backend mp omitted (an oversight; effect unmeasured);
 #   - --kv-cache-memory 20 GB, not 27: same speed measured, ~9 GiB more host memory;
 #   - reasoning_effort defaults to medium (the stock template's xhigh loops
 #     under greedy decoding);
