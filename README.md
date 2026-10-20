@@ -72,7 +72,9 @@ The engine settings are myllmbox's [v5.2 `recipe.yaml`](https://github.com/myllm
    their own effort still get it.
 4. **`--enable-prompt-tokens-details`**, so `usage` reports cached prompt tokens. This is cosmetic for the benchmark.
 5. **`--distributed-executor-backend mp` was left out**, by oversight while converting the recipe. It is the only
-   upstream flag missing from the submission. At TP 1 vLLM picks its own executor; the effect is unmeasured.
+   upstream flag missing from the submission. Without it, vLLM at TP 1 runs the model inside the engine process
+   (the `uni` executor); with it, the model runs in a separate worker process fed over shared memory. The model's
+   computation is the same either way. The effect is unmeasured and is likely smaller than run-to-run noise.
 
 `spark-arena-cli` forces a few more: the served name is the HF id, the port is 8000, and caches live under
 `/root/.cache/vllm/mbx` (the runner mounts `~/.cache/vllm`). The runner also starts the container `--privileged`,
